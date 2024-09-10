@@ -131,10 +131,18 @@ col1, col2 = st.columns([3, 1])
 with col1:
     st.header("Capture Image")
     st.write("**Live Webcam Feed**")
-    with st.container():
-        webrtc_ctx = webrtc_streamer(key="example", video_processor_factory=VideoTransformer, audio_frame_callback=False)
-        st.markdown('<div class="webcam-container">', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Initialize webrtc_streamer and assign VideoTransformer class to process frames
+    webrtc_ctx = webrtc_streamer(
+        key="something",
+        video_processor_factory=VideoTransformer,  # Use VideoTransformer to process frames
+        rtc_configuration={  # RTC configuration for WebRTC connection
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        }
+    )
+
+    st.markdown('<div class="webcam-container">', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
     st.header("Controls")
