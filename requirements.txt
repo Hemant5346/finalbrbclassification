@@ -7,3 +7,4 @@ streamlit_webrtc==0.47.7
 torch==2.2.2
 torchvision==0.17.2
 transformers==4.44.2
+skimage
