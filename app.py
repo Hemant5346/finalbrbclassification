@@ -132,8 +132,8 @@ with col1:
     st.header("Capture Image")
     st.write("**Live Webcam Feed**")
     with st.container():
-        st.markdown('<div class="webcam-container">', unsafe_allow_html=True)
         webrtc_ctx = webrtc_streamer(key="example", video_processor_factory=VideoTransformer, audio_frame_callback=False)
+        st.markdown('<div class="webcam-container">', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
