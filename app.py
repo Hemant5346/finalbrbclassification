@@ -1,16 +1,13 @@
 import streamlit as st
-
-# Set page config at the very beginning
-st.set_page_config(page_title="Hair Type Classifier", layout="wide")
-
 import torch
 from torchvision import models, transforms
 from PIL import Image
-import av
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
 import numpy as np
 from transformers import pipeline
+
+# Set page config at the very beginning
+st.set_page_config(page_title="Hair Type Classifier", layout="wide")
 
 # Load the trained model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,20 +40,13 @@ segmentation_pipeline = pipeline("image-segmentation", model="briaai/RMBG-1.4", 
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-class VideoTransformer(VideoTransformerBase):
-    def __init__(self):
-        self.last_frame = None
-
-    def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        self.last_frame = img
-        return img
-
+# Function to detect face
 def detect_face(image):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
     return len(faces) > 0
 
+# Function to classify hair type
 def classify_image(image):
     image = Image.fromarray(image).convert("RGB")
     
@@ -125,30 +115,32 @@ st.write("""
     Use the controls below to capture an image and get results.
 """)
 
-# Create a column layout
-col1, col2 = st.columns([3, 1])
+# Webcam photo capture using OpenCV
+st.header("Capture Image")
+st.write("Click the button below to capture an image from your webcam.")
 
-with col1:
-    st.header("Capture Image")
-    st.write("**Live Webcam Feed**")
-    with st.container():
-        st.markdown('<div class="webcam-container">', unsafe_allow_html=True)
-        webrtc_ctx = webrtc_streamer(key="example", video_transformer_factory=VideoTransformer, audio_frame_callback=False)
-        st.markdown('</div>', unsafe_allow_html=True)
+# Flag to run webcam
+run = st.checkbox('Start Webcam')
 
-with col2:
-    st.header("Controls")
-    st.write("Click the button below to capture an image from your webcam.")
+FRAME_WINDOW = st.image([])
 
-    if st.button("Capture Image"):
-        if webrtc_ctx.video_transformer and webrtc_ctx.video_transformer.last_frame is not None:
-            img = webrtc_ctx.video_transformer.last_frame
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-            if detect_face(img_rgb):
-                st.image(img_rgb, caption="Captured Image", use_column_width=True)
+if run:
+    cam = cv2.VideoCapture(0)
+    
+    while run:
+        ret, frame = cam.read()
+        if not ret:
+            st.warning("Webcam error: Could not read frame.")
+            break
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        FRAME_WINDOW.image(frame)
+        
+        if st.button("Capture Image"):
+            captured_img = frame
+            if detect_face(captured_img):
+                st.image(captured_img, caption="Captured Image", use_column_width=True)
                 
-                background_removed_img, predicted_class = classify_image(img_rgb)
+                background_removed_img, predicted_class = classify_image(captured_img)
                 
                 st.image(background_removed_img, caption="Background Removed Image", use_column_width=True)
                 
@@ -158,5 +150,6 @@ with col2:
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.warning("No face detected in the image.")
-        else:
-            st.warning("No image captured from the webcam.")
+        cam.release()
+else:
+    st.warning("Please check the box to start the webcam.")
