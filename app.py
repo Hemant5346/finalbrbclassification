@@ -6,6 +6,8 @@ st.set_page_config(page_title="Hair Type Classifier", layout="wide")
 import torch
 from torchvision import models, transforms
 from PIL import Image
+import av
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
 import numpy as np
 from transformers import pipeline
@@ -41,6 +43,15 @@ segmentation_pipeline = pipeline("image-segmentation", model="briaai/RMBG-1.4", 
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
+class VideoTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.last_frame = None
+
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        self.last_frame = img
+        return img
+
 def detect_face(image):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
@@ -49,12 +60,11 @@ def detect_face(image):
 def classify_image(image):
     image = Image.fromarray(image).convert("RGB")
     
-    # Apply segmentation pipeline to remove background
-    segmentation_results = segmentation_pipeline(image)
-    mask = segmentation_results[0]['mask']
-    image = Image.composite(image, Image.new('RGB', image.size), mask)
+    pillow_mask = segmentation_pipeline(image, return_mask=True)  
+    segmented_image = segmentation_pipeline(image) 
     
-    # Preprocess image for classification
+    image = np.array(segmented_image)
+    image = Image.fromarray(image).convert("RGB")
     image = transform(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
@@ -62,7 +72,7 @@ def classify_image(image):
         _, predicted = torch.max(outputs, 1)
 
     predicted_class = class_names[predicted.item()]
-    return predicted_class
+    return segmented_image, predicted_class
 
 # Custom CSS
 st.markdown("""
@@ -71,13 +81,23 @@ st.markdown("""
         background-color: #4CAF50;
         color: white;
         padding: 15px 32px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
         font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
         border-radius: 12px;
         border: none;
-        cursor: pointer;
+        transition-duration: 0.4s;
     }
     .stButton > button:hover {
         background-color: #45a049;
+    }
+    .webcam-container {
+        border: 2px solid #4CAF50;
+        border-radius: 10px;
+        padding: 10px;
     }
     .result-container {
         background-color: #f1f1f1;
@@ -110,36 +130,33 @@ col1, col2 = st.columns([3, 1])
 
 with col1:
     st.header("Capture Image")
-    st.write("**Take a Picture**")
-    
-    # Capture image from webcam
-    img_file_buffer = st.camera_input("Capture an image")
-    
-    if img_file_buffer is not None:
-        # To read image file buffer with OpenCV:
-        bytes_data = img_file_buffer.getvalue()
-        img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
-        # Display the captured image
-        st.image(img_rgb, caption="Captured Image", use_column_width=True)
-        
-        if detect_face(img_rgb):
-            # Process the image and display results
-            predicted_class = classify_image(img_rgb)
-            
-            st.markdown('<div class="result-container">', unsafe_allow_html=True)
-            st.markdown('<p class="result-header">Analysis Results</p>', unsafe_allow_html=True)
-            st.markdown(f'<p class="result-text">Predicted Hair Type: {predicted_class}</p>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.warning("No face detected in the image.")
+    st.write("**Live Webcam Feed**")
+    with st.container():
+        st.markdown('<div class="webcam-container">', unsafe_allow_html=True)
+        webrtc_ctx = webrtc_streamer(key="example", video_transformer_factory=VideoTransformer, audio_frame_callback=False)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
-    st.header("Instructions")
-    st.write("""
-        1. Allow access to your webcam when prompted.
-        2. Click on **'Capture an image'** to take a picture.
-        3. Wait for the analysis results to appear.
-    """)
+    st.header("Controls")
+    st.write("Click the button below to capture an image from your webcam.")
 
+    if st.button("Capture Image"):
+        if webrtc_ctx.video_transformer and webrtc_ctx.video_transformer.last_frame is not None:
+            img = webrtc_ctx.video_transformer.last_frame
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            
+            if detect_face(img_rgb):
+                st.image(img_rgb, caption="Captured Image", use_column_width=True)
+                
+                background_removed_img, predicted_class = classify_image(img_rgb)
+                
+                st.image(background_removed_img, caption="Background Removed Image", use_column_width=True)
+                
+                st.markdown('<div class="result-container">', unsafe_allow_html=True)
+                st.markdown('<p class="result-header">Analysis Results</p>', unsafe_allow_html=True)
+                st.markdown(f'<p class="result-text">Predicted Hair Type: {predicted_class}</p>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.warning("No face detected in the image.")
+        else:
+            st.warning("No image captured from the webcam.")
