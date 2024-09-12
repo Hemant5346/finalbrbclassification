@@ -72,7 +72,4 @@ transformers==4.44.2
 typing_extensions==4.12.2
 tzdata==2024.1
 urllib3==2.2.2
-<<<<<<< HEAD
-libGL
-libgl1
 
